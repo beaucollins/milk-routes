@@ -1,167 +1,122 @@
-var kml;
+
 
 (function($){
-  $.fn.toAddress = function(){
-    return "6302 181st PL SW, Lynnwood, WA 98037";
-  };
-})(jQuery);
-
-$(document).ready(function() {
-  // var center = new google.maps.LatLng(47.58, -122.35);
-  // var mapOptions = {
-  //   zoom: 9,
-  //   center: center,
-  //   mapTypeId: google.maps.MapTypeId.ROADMAP
-  // };
-  // 
-  // var map = new google.maps.Map(
-  //     document.getElementById("map_canvas"),
-  //     mapOptions);
-  // 
-  // var routesLayer = kml = new google.maps.KmlLayer(
-  //   'http://www.smithbrothersfarms.com/js/sbf_jobber_routes.kml',
-  //   {
-  //     suppressInfoWindows: false,
-  //     preserveViewport: true,
-  //     map: map
-  //   }
-  // );
-
-  // var marker = null;
-  // var infowindow = null;
-
-  $('#form1').submit(find_address);
-
-  //////////////
-  // Functions
-  function find_address(e) {
-    e.preventDefault();
-    // console.log("find_address called");
-    var address = $(this).toAddress();
-    var point = { x: '', y: ''};
-    var geocoder = new google.maps.Geocoder();
-
-    var sw = new google.maps.LatLng(46.668, -123.289);
-    var ne = new google.maps.LatLng(48.560, -121.460);
-    var bounds = new google.maps.LatLngBounds(sw, ne);
-
-    geocoder.geocode({
-        address: address,
-        bounds: bounds
-      },
-      function(data, status) {
-        // console.log(data);
-        if (data.length == 0) {
-          geocodingFailed();
-        } else {
-          point.x = data[0].geometry.location.lng();
-          point.y = data[0].geometry.location.lat();
-          find_route(point);
-        }
-        // console.log(point);
+  
+  /*
+  Route data model to contain the route name and coordinates
+  */
+  
+  var Route = function(name, poly, bounds){
+    this.name = name;
+    this.poly = poly;
+    this.bounds = bounds;
+    
+    this.containsLatLng = function(latLng){
+      var poly = this.poly;
+      var pt = [latLng.lat(), latLng.lng()];
+      if(!this.bounds.contains(latLng)){
+        return false;
       }
-    );
-    return false; // Stop click from submitting form.
+      return isPointInPoly(pt, poly);
+    };
   }
   
-  function find_route(point) {
-    $.ajax({
-      type: "GET",
-      url:  'js/sbf_jobber_routes.kml',
-      dataType: "text",
-      success: function(data) {
-        var found = false;
-        var kml = $.parseXML(data);
-        $(kml).find('Placemark').each(function() {
-        // $(data).find('Placemark').each(function() {
-          // console.log(this);
-          var coordinates_text = $(this).find('coordinates').text();
-          var coordinates = coordinates_text.split(" ");
-          var polygon = [];
-          for (var i = 0; i < coordinates.length; i++) {
-            var coordinate_data = coordinates[i].split(",");
-            coordinate_data[0] = coordinate_data[0].replace(/[^\d-.]/, '');
-            if (typeof(coordinate_data[0]) != "undefined" &&
-                typeof(coordinate_data[1]) != "undefined") {
-              polygon[i] = {x: parseFloat(coordinate_data[0]), y: parseFloat(coordinate_data[1])};
-            }
-          }
-          // console.log(polygon);
-          if (isPointInPoly(polygon, point)) {
-            // console.log("We got one");
-            // console.log($(this).find('name').text());
-            // console.log($(this).find('description').contents());
-            // console.log($(this).attr('id'));
-            // dropMarker(point, this);
-            var route_name = $(this).find('name').text();
-            
-            if (route_name.match(/Company Route/i)) {
-              // GOTO ROSS
-              // http://smithbroshome.rossusa.com/Forms/customerinfo.aspx
-              return;
-            }else if(route_name.match(/Route [\d]+/)){
-              // GOTO CRM
-              // http://web2crm.crminnovation.com/HostedForm/default.aspx?ID=ab54b4e5-1239-40e3-9c95-c7cdfa0d3e00
-              
-            }
-            
-            
-            found = true;
-            return false;
-          }
-        });
-        if (!found) {
-          // notInRoute();
-          // NO ROUTE
-          // POST TO SITE
+  Route.routes = [];
+  
+  Route.build = function(placemark){
+    var $placemark = $(placemark);
+    var name = $placemark.find('name').text();
+    // var coordinates;
+    var coordinate_text = $placemark.find('coordinates').text().trim();
+    var coordinates = coordinate_text.split(" ");
+    var path = [];
+    var bounds = new google.maps.LatLngBounds();
+    for (var i = coordinates.length - 1; i >= 0; i--){
+      var coordinate = coordinates[i].split(',');
+      var latlng = [parseFloat(coordinate[0]),parseFloat(coordinate[1])];
+      bounds.extend(new google.maps.LagLng(laglng[0], latlng[1]));
+      path.push(latlng);
+    };
+    
+    var r = new Route(name, path, bounds);
+    Route.routes.push(r);
+    return r;
+        
+  }
+  
+  Route.routeForLatLng = function(latLng){
+    for (var i = Route.routes.length - 1; i >= 0; i--){
+      var route = Route.routes[i];
+      console.log("Checking if route: ", route.name, " contains ", latLng);
+      if (route.containsLatLng(latLng)) {
+        return route;
+      };
+    };
+    return;
+  }
+  
+  var geocoder = new google.maps.Geocoder;
+  
+  Route.routeForAddress = function(address, success, failure){
+    geocoder.geocode({ address: address }, function(results, status){
+      if (status == google.maps.GeocoderStatus.OK) {
+        // find the routes that matches the first result
+        var latLng = results[0].geometry.location;
+        if (route = Route.routeForLatLng(latLng)) {
+          success(route);
+        }else{
+          failure();
         }
+      }else{
+        if(failure) failure(status);
       }
-    });
+    })
+    
   }
-
-  //+ Jonas Raoni Soares Silva
-  //@ http://jsfromhell.com/math/is-point-in-poly [rev. #0]
-
-  function isPointInPoly(poly, pt){
-    for(var c = false, i = -1, l = poly.length, j = l - 1; ++i < l; j = i)
-      ((poly[i].y <= pt.y && pt.y < poly[j].y) || (poly[j].y <= pt.y && pt.y < poly[i].y))
-        && (pt.x < (poly[j].x - poly[i].x) * (pt.y - poly[i].y) / (poly[j].y - poly[i].y) + poly[i].x)
-        && (c = !c);
-    return c;
-  }
-
-  function geocodingFailed() {
-    alert("Sorry, we cannot locate that address. Try entering just your zip code, or give us a call at 1-877-MILKMAN.");
-  }
-
-  function notInRoute() {
-    alert("Sorry, that address does not appear to be on a delivery route. If you think you are in a Smith Brothers Farms delivery area, please give us a call at 1-877-MILKMAN.");
-  }
-
-  function dropMarker(point, placemark) {
-    var position = new google.maps.LatLng(point.y, point.x);
-    if (infowindow) {
-      infowindow.close();
-      infowindow = null;
-    }
-    if (marker) {
-      marker.setMap(null);
-      marker = null;
-    }
-    map.panTo(position);
-    marker = new google.maps.Marker({
-      position: position,
-      // animation: google.maps.Animation.DROP,
-      title: $(placemark).find('name').text()
-    });
-    marker.setMap(map);
-    infowindow = new google.maps.InfoWindow({
-      content: '<div style="font-weight: bold; font-size: medium; margin-bottom: 0;">' +
-               $(placemark).find('name').text() +
-               '</div><p>' +
-               $(placemark).find('description').text() +
-               '</p>'
-    });
-    infowindow.open(map, marker);
-  }
-});
+  
+    
+  var crm_field_map = {};
+  var ross_field_map = {};
+  
+  
+  var ready = false;
+  
+  $.ajax({
+    type:'GET',
+    url:'js/sbf_jobber_routes.kml',
+    success:function(data, textStatus, jqXHR){
+      
+      $(data).find("Placemark").each(function(){
+        var route = Route.build(this);
+      });
+      
+      ready = true;
+      
+    },
+    error:function(jqXHR, textStatus, errorThrown){
+      throw("Could not load KML");
+    }   
+  });
+    
+  
+  $(document).ready(function(){
+    $('#form1').submit(function(e){
+      e.preventDefault();
+      var $form = $(this);
+      console.log(this);
+      var address = $form.find('[name=address1_line1]').val() + " " + $form.find('[name=address1_city]') + " WA";
+      
+      Route.routeForAddress(address,
+        function(route){
+          console.log(route);
+        },
+        function(error){
+          console.log(error);
+        }
+      );
+      
+      
+    })
+  });
+  
+})(jQuery);
