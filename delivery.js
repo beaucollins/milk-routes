@@ -29,15 +29,23 @@
     };
     
     this.getFormData = function(data){
-      console.log("Get form data", data);
       // first figure out which mapping to use:
       var form = this.getFieldMapping();
       var map = form.fields;
-      var mapped = {};
+      var mapped = {}, field_config;
       for(field in map){
-        mapped[(map[field] ? map[field] : field)] = (data[field] || '');
+        field_config = map[field] || field;
+        if (typeof(field_config) == 'string') {
+          field_config = {
+            name: field_config
+          }
+        }
+        if (typeof(field_config.formatter) == 'function') {
+          mapped[field_config.name] = field_config.formatter((data[field] || ''));
+        }else{
+          mapped[field_config.name] = (data[field] || '');
+        }
       }
-      console.log(mapped);
       return {
         url: form.url,
         fields: mapped
@@ -53,21 +61,34 @@
       };
     }
   }
+  
+  var Formatters = {
+    phone: function(input){
+      // remove non-digits
+      var numbers = input.replace(/[^\d]/,'');
+      console.log(numbers);
+      if (numbers.match(/^[\d]{10}$/)) {
+        numbers = numbers.replace(/([\d]{3})([\d]{3})([\d]{4})/,"$1-$2-$3")
+      }else if (numbers.match(/^[\d]{7}$/)) {
+        numbers = numbers.replace(/([\d]{3})([\d]{3})([\d]{4})/,"$1-$2")
+      };
+      return numbers;
+    }
+  }
     
   Route.forms = {
     'crm' : {
       url: 'http://smithbroshome.rossusa.com/Forms/customerinfo.aspx',
       fields: {
-        'firstname'                     : 'ctl00$cphLeft_Center$ctl00$txtFirstName',
-        'lastname'                      : 'ctl00$cphLeft_Center$ctl00$txtLastName',
-        'address1_line1'                : 'ctl00$cphLeft_Center$ctl00$txtStreetAddress',
-        'new_address_unit'              : '',
-        'address1_city'                 : 'ctl00$cphLeft_Center$ctl00$txtCity',
-        'address1_postalcode'           : 'ctl00$cphLeft_Center$ctl00$txtZipCode',
-        'emailaddress1'                 : 'ctl00$cphLeft_Center$ctl00$txtEmail',
-        'telephone1'                    : 'ctl00$cphLeft_Center$ctl00$txtPhone',
-        'telephone2'                    : 'ctl00$cphLeft_Center$ctl00$txtCellPhone',
-        'state'                         : 'ctl00$cphLeft_Center$ctl00$ddlState'
+        'firstname'                     : 'FirstName',
+        'lastname'                      : 'LastName',
+        'address1_line1'                : 'StreetAddress',
+        'address1_city'                 : 'City',
+        'address1_postalcode'           : 'Zip',
+        'emailaddress1'                 : 'Email',
+        'telephone1'                    : { name: 'PhoneNum', formatter:Formatters.phone},
+        'telephone2'                    : { name: 'CellNum', formatter:Formatters.phone},
+        'state'                         : 'State'
         // 'preferredcontactmethodcode'    : '',
         // 'new_promocode'                 : '',
         // 'new_howdidyouhearaboutus'      : '',
@@ -185,12 +206,8 @@
           });
           console.log('data', data);
           var formData = route.getFormData(data);
-          var f = $('<form method="POST" action="'+ formData.url +'"></form>')
-          $('body').append(f);
-          for(field in formData.fields){
-            f.append('<input type="hidden" name="' + field + '" value="' + formData.fields[field].value + '" >')
-          }
-          f.append('<input type="submit">');
+          console.log("Form data", formData);
+          window.location.href = formData.url + "?" + jQuery.param(formData.fields);
         },
         function(error){
           console.log(error);
