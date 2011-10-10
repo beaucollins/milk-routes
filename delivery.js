@@ -66,7 +66,6 @@
     phone: function(input){
       // remove non-digits
       var numbers = input.replace(/[^\d]/,'');
-      console.log(numbers);
       if (numbers.match(/^[\d]{10}$/)) {
         numbers = numbers.replace(/([\d]{3})([\d]{3})([\d]{4})/,"$1-$2-$3")
       }else if (numbers.match(/^[\d]{7}$/)) {
@@ -199,18 +198,13 @@
         function(route){
           var submitted = $form.serializeArray();
           var data = {'state':'WA'};
-          console.log('submitted', submitted);
           $.each(submitted, function(index, field){
-            console.log(arguments, this);
             data[field.name] = field.value;
           });
-          console.log('data', data);
           var formData = route.getFormData(data);
-          console.log("Form data", formData);
           window.location.href = formData.url + "?" + jQuery.param(formData.fields);
         },
         function(error){
-          console.log(error);
         }
       );
       
